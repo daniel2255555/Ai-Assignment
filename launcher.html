@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emotion Detection — BMCS2203</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --surface: #141416;
+    --border: #1e1e22;
+    --border-bright: #2e2e36;
+    --text: #e8e6e1;
+    --muted: #6b6870;
+    --svm: #00c9a7;
+    --cnn: #ff6b35;
+    --yolo: #7c5cbf;
+    --accent: #f0c040;
+    --danger: #e04040;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── grid bg ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+  /* ── header ── */
+  header { margin-bottom: 3rem; }
+  .badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 3px 10px;
+    border-radius: 2px;
+    letter-spacing: .08em;
+    margin-bottom: 1rem;
+    opacity: .8;
+  }
+  h1 {
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -.02em;
+  }
+  h1 span { color: var(--accent); }
+  .sub {
+    margin-top: .75rem;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+
+  /* ── section title ── */
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── method cards ── */
+  .methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1px; }
+
+  .method-card {
+    background: var(--surface);
+    padding: 1.5rem;
+    position: relative;
+    transition: background .15s;
+  }
+  .method-card:hover { background: #18181c; }
+
+  .method-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .card-svm::before  { background: var(--svm); }
+  .card-cnn::before  { background: var(--cnn); }
+  .card-yolo::before { background: var(--yolo); }
+
+  .method-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .1em;
+    padding: 2px 8px;
+    border-radius: 2px;
+    display: inline-block;
+    margin-bottom: .75rem;
+  }
+  .tag-svm  { background: rgba(0,201,167,.12); color: var(--svm); }
+  .tag-cnn  { background: rgba(255,107,53,.12); color: var(--cnn); }
+  .tag-yolo { background: rgba(124,92,191,.12); color: var(--yolo); }
+
+  .method-card h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: .4rem; }
+  .method-card p  { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 1rem; }
+
+  .specs { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1.2rem; }
+  .spec {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  }
+  .spec-key { color: var(--muted); }
+  .spec-val { color: var(--text); }
+
+  /* ── status pill ── */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 4px 10px; border-radius: 20px;
+    margin-bottom: 1rem;
+  }
+  .status-ready   { background: rgba(0,201,167,.1);  color: var(--svm);   border: 1px solid rgba(0,201,167,.2); }
+  .status-pending { background: rgba(240,192,64,.08); color: var(--accent);border: 1px solid rgba(240,192,64,.2); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot-ready   { background: var(--svm); }
+  .dot-pending { background: var(--accent); animation: blink 1.4s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* ── buttons ── */
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all .15s;
+    text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:active { transform: scale(.97); }
+
+  .btn-svm-train  { background: rgba(0,201,167,.12); color: var(--svm);   border-color: rgba(0,201,167,.25); }
+  .btn-svm-detect { background: rgba(0,201,167,.06); color: var(--svm);   border-color: rgba(0,201,167,.15); }
+  .btn-cnn-train  { background: rgba(255,107,53,.12); color: var(--cnn);  border-color: rgba(255,107,53,.25); }
+  .btn-cnn-detect { background: rgba(255,107,53,.06); color: var(--cnn);  border-color: rgba(255,107,53,.15); }
+  .btn-yolo-train { background: rgba(124,92,191,.12); color: var(--yolo); border-color: rgba(124,92,191,.25); }
+  .btn-yolo-detect{ background: rgba(124,92,191,.06); color: var(--yolo); border-color: rgba(124,92,191,.15); }
+  .btn:hover { filter: brightness(1.2); }
+
+  /* ── terminal ── */
+  .terminal-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+  .terminal-bar {
+    background: #1a1a1e;
+    padding: 8px 14px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dot-r { width:10px;height:10px;border-radius:50%;background:#e04040; }
+  .dot-y { width:10px;height:10px;border-radius:50%;background:#f0c040; }
+  .dot-g { width:10px;height:10px;border-radius:50%;background:#00c9a7; }
+  .terminal-title { font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-left:6px; }
+
+  .terminal-body {
+    padding: 1.25rem 1.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.9;
+    color: #b0ae9e;
+    min-height: 120px;
+  }
+  .cmd-block { margin-bottom: .5rem; }
+  .prompt { color: var(--svm); }
+  .prompt-cnn { color: var(--cnn); }
+  .prompt-yolo { color: var(--yolo); }
+  .cmd-text { color: var(--text); }
+  .comment { color: var(--muted); }
+
+  /* ── comparison table ── */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+  .compare-table th {
+    background: #18181c;
+    padding: 12px 16px;
+    text-align: left;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .08em;
+    color: var(--muted);
+    font-weight: 400;
+    border-bottom: 1px solid var(--border);
+  }
+  .compare-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: middle;
+  }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: rgba(255,255,255,.02); }
+  .compare-table td:first-child { color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+  .chip {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+  }
+  .chip-g { background: rgba(0,201,167,.12); color: var(--svm); }
+  .chip-o { background: rgba(255,107,53,.12); color: var(--cnn); }
+  .chip-p { background: rgba(124,92,191,.12); color: var(--yolo); }
+  .chip-y { background: rgba(240,192,64,.1);  color: var(--accent); }
+
+  /* ── install section ── */
+  .install-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 2rem; }
+  .install-card { background: var(--surface); padding: 1.25rem 1.5rem; }
+  .install-card h3 { font-size: .95rem; margin-bottom: .75rem; display: flex; align-items: center; gap: 8px; }
+  .install-card code {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    color: #a0f0d0;
+    background: rgba(0,0,0,.3);
+    padding: .6rem .9rem;
+    border-radius: 6px;
+    margin-bottom: .5rem;
+    word-break: break-all;
+    line-height: 1.6;
+  }
+
+  /* ── folder tree ── */
+  .tree {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    background: rgba(0,0,0,.3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    line-height: 2;
+    margin-bottom: 2rem;
+  }
+  .tree .hl  { color: var(--svm); }
+  .tree .hl2 { color: var(--cnn); }
+  .tree .hl3 { color: var(--yolo); }
+  .tree .dim { color: #333; }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <header>
+    <div class="badge">BMCS2203 · Image Processing & Computer Vision</div>
+    <h1>Emotion <span>Detection</span><br>System</h1>
+    <p class="sub">// SVM · CNN · YOLO &nbsp;|&nbsp; FER2013 · 100 imgs/class · Real-time webcam</p>
+  </header>
+
+  <!-- Method Cards -->
+  <div class="section-label">methods</div>
+  <div class="methods" style="margin-bottom:2rem">
+
+    <!-- SVM Card -->
+    <div class="method-card card-svm">
+      <div class="method-tag tag-svm">TRADITIONAL ML</div>
+      <h2>SVM</h2>
+      <p>Support Vector Machine with HOG features and RBF kernel. Classical approach — no deep learning.</p>
+      <div class="specs">
+        <div class="spec"><span class="spec-key">features</span><span class="spec-val">HOG · 2916 dims</span></div>
+        <div class="spec"><span class="spec-key">kernel</span><span class="spec-val">RBF · C=1</span></div>
+        <div class="spec"><span class="spec-key">reduction</span><span class="spec-val">PCA 150 components</span></div>
+        <div class="spec"><span class="spec-key">script</span><span class="spec-val">emotion_svm.py</span></div>
+      </div>
+      <div class="status-pill status-ready"><span class="dot dot-ready"></span>ready</div>
+      <div class="btn-row">
+        <span class="btn btn-svm-train">▶ --train</span>
+        <span class="btn btn-svm-detect">◉ --detect</span>
+      </div>
+    </div>
+
+    <!-- CNN Card -->
+    <div class="method-card card-cnn">
+      <div class="method-tag tag-cnn">DEEP LEARNING</div>
+      <h2>CNN</h2>
+      <p>3-block Convolutional Neural Network with BatchNorm and Dropout. Learns features automatically.</p>
+      <div class="specs">
+        <div class="spec"><span class="spec-key">input</span><span class="spec-val">48×48×1 grayscale</span></div>
+        <div class="spec"><span class="spec-key">layers</span><span class="spec-val">Conv×6 · Dense×2</span></div>
+        <div class="spec"><span class="spec-key">epochs</span><span class="spec-val">30 · early stop</span></div>
+        <div class="spec"><span class="spec-key">script</span><span class="spec-val">emotion_cnn.py</span></div>
+      </div>
+      <div class="status-pill status-pending"><span class="dot dot-pending"></span>needs training</div>
+      <div class="btn-row">
+        <span class="btn btn-cnn-train">▶ --train</span>
+        <span class="btn btn-cnn-detect">◉ --detect</span>
+      </div>
+    </div>
+
+    <!-- YOLO Card -->
+    <div class="method-card card-yolo">
+      <div class="method-tag tag-yolo">OBJECT DETECTION</div>
+      <h2>YOLOv8</h2>
+      <p>YOLOv8-nano classification fine-tuned on FER2013. Fastest inference, auto dataset conversion.</p>
+      <div class="specs">
+        <div class="spec"><span class="spec-key">base</span><span class="spec-val">yolov8n-cls.pt</span></div>
+        <div class="spec"><span class="spec-key">input</span><span class="spec-val">64×64 RGB</span></div>
+        <div class="spec"><span class="spec-key">epochs</span><span class="spec-val">30 · patience 10</span></div>
+        <div class="spec"><span class="spec-key">script</span><span class="spec-val">emotion_yolo.py</span></div>
+      </div>
+      <div class="status-pill status-pending"><span class="dot dot-pending"></span>needs training</div>
+      <div class="btn-row">
+        <span class="btn btn-yolo-train">▶ --train</span>
+        <span class="btn btn-yolo-detect">◉ --detect</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Terminal / Commands -->
+  <div class="section-label">command prompt — run order</div>
+  <div class="terminal-wrap">
+    <div class="terminal-bar">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="terminal-title">C:\Users\User\emotion_detection\</span>
+    </div>
+    <div class="terminal-body">
+      <div class="comment"># ── 1. Install all dependencies ──────────────────────────</div>
+      <div class="cmd-block">
+        <span class="prompt">C:\&gt;</span>
+        <span class="cmd-text"> pip install opencv-python scikit-learn scikit-image numpy matplotlib seaborn joblib</span>
+      </div>
+      <div class="cmd-block">
+        <span class="prompt">C:\&gt;</span>
+        <span class="cmd-text"> pip install tensorflow</span>
+        <span class="comment">  # for CNN</span>
+      </div>
+      <div class="cmd-block">
+        <span class="prompt">C:\&gt;</span>
+        <span class="cmd-text"> pip install ultralytics</span>
+        <span class="comment">    # for YOLO</span>
+      </div>
+      <br>
+      <div class="comment"># ── 2. Train each method ─────────────────────────────────</div>
+      <div class="cmd-block"><span class="prompt">C:\&gt;</span><span class="cmd-text"> python emotion_svm.py  --train</span></div>
+      <div class="cmd-block"><span class="prompt-cnn">C:\&gt;</span><span class="cmd-text"> python emotion_cnn.py  --train</span></div>
+      <div class="cmd-block"><span class="prompt-yolo">C:\&gt;</span><span class="cmd-text"> python emotion_yolo.py --train</span></div>
+      <br>
+      <div class="comment"># ── 3. Run real-time webcam detection ────────────────────</div>
+      <div class="cmd-block"><span class="prompt">C:\&gt;</span><span class="cmd-text"> python emotion_svm.py  --detect</span></div>
+      <div class="cmd-block"><span class="prompt-cnn">C:\&gt;</span><span class="cmd-text"> python emotion_cnn.py  --detect</span></div>
+      <div class="cmd-block"><span class="prompt-yolo">C:\&gt;</span><span class="cmd-text"> python emotion_yolo.py --detect</span></div>
+    </div>
+  </div>
+
+  <!-- Folder Structure -->
+  <div class="section-label">required folder structure</div>
+  <div class="tree">
+    emotion_detection/<br>
+    <span class="dim">├── </span><span class="hl">emotion_svm.py</span><br>
+    <span class="dim">├── </span><span class="hl2">emotion_cnn.py</span><br>
+    <span class="dim">├── </span><span class="hl3">emotion_yolo.py</span><br>
+    <span class="dim">├── </span>launcher.html &nbsp;&nbsp;&nbsp;<span class="comment" style="color:#333;font-size:11px">← this file</span><br>
+    <span class="dim">├── fer2013/</span><br>
+    <span class="dim">│   └── train/</span><br>
+    <span class="dim">│       ├── </span>angry/ &nbsp;disgust/ &nbsp;fear/ &nbsp;happy/<br>
+    <span class="dim">│       └── </span>neutral/ &nbsp;sad/ &nbsp;surprise/<br>
+    <span class="dim">└── models/</span> &nbsp;&nbsp;&nbsp;<span style="color:#333;font-size:11px">← auto-created on first --train</span><br>
+    <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;├── </span><span class="hl">emotion_svm.pkl &nbsp;emotion_scaler.pkl &nbsp;emotion_pca.pkl</span><br>
+    <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;├── </span><span class="hl2">emotion_cnn.h5 &nbsp;cnn_le.pkl</span><br>
+    <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;└── </span><span class="hl3">emotion_yolo/weights/best.pt</span>
+  </div>
+
+  <!-- Comparison Table -->
+  <div class="section-label">method comparison — assignment section (f)</div>
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>metric</th>
+        <th><span class="chip chip-g">SVM</span></th>
+        <th><span class="chip chip-o">CNN</span></th>
+        <th><span class="chip chip-p">YOLOv8</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>algorithm type</td>
+        <td>Traditional ML</td>
+        <td>Deep Learning</td>
+        <td>Deep Learning</td>
+      </tr>
+      <tr>
+        <td>feature extraction</td>
+        <td>Hand-crafted HOG</td>
+        <td>Learned by Conv layers</td>
+        <td>Learned by backbone</td>
+      </tr>
+      <tr>
+        <td>training time (CPU)</td>
+        <td><span class="chip chip-g">~2 min</span></td>
+        <td><span class="chip chip-y">~20 min</span></td>
+        <td><span class="chip chip-y">~15 min</span></td>
+      </tr>
+      <tr>
+        <td>expected accuracy</td>
+        <td>~55–65%</td>
+        <td>~65–75%</td>
+        <td>~60–70%</td>
+      </tr>
+      <tr>
+        <td>inference speed</td>
+        <td>Fast</td>
+        <td>Medium</td>
+        <td><span class="chip chip-g">Fastest</span></td>
+      </tr>
+      <tr>
+        <td>dataset needed</td>
+        <td>Small (100/class)</td>
+        <td>Medium (100/class)</td>
+        <td>Medium (100/class)</td>
+      </tr>
+      <tr>
+        <td>requires GPU</td>
+        <td>No</td>
+        <td>Recommended</td>
+        <td>Recommended</td>
+      </tr>
+      <tr>
+        <td>model file size</td>
+        <td>~5 MB (.pkl)</td>
+        <td>~15 MB (.h5)</td>
+        <td>~6 MB (.pt)</td>
+      </tr>
+      <tr>
+        <td>main advantage</td>
+        <td>Simple, interpretable</td>
+        <td>Best accuracy</td>
+        <td>Fastest real-time</td>
+      </tr>
+      <tr>
+        <td>main disadvantage</td>
+        <td>Hand-crafted features</td>
+        <td>Needs more data/GPU</td>
+        <td>Needs more data</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Install reference -->
+  <div class="section-label">install reference</div>
+  <div class="install-grid">
+    <div class="install-card">
+      <h3><span class="chip chip-g">SVM</span> &nbsp;emotion_svm.py</h3>
+      <code>pip install opencv-python scikit-learn scikit-image numpy matplotlib seaborn joblib</code>
+    </div>
+    <div class="install-card">
+      <h3><span class="chip chip-o">CNN</span> &nbsp;emotion_cnn.py</h3>
+      <code>pip install tensorflow opencv-python numpy matplotlib seaborn</code>
+    </div>
+    <div class="install-card">
+      <h3><span class="chip chip-p">YOLO</span> &nbsp;emotion_yolo.py</h3>
+      <code>pip install ultralytics opencv-python numpy matplotlib seaborn pyyaml</code>
+    </div>
+  </div>
+
+  <footer>
+    <span>BMCS2203 · Image Processing &amp; Computer Vision Assignment</span>
+    <span>SVM · CNN · YOLOv8 · FER2013 · Balanced 100 imgs/class</span>
+  </footer>
+
+</div>
+</body>
+</html>
