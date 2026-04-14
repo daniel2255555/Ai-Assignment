@@ -1,0 +1,4 @@
+train: C:\Users\User\Desktop\AiAssignment\Ai-Assignment\RAF-DB\train
+val: C:\Users\User\Desktop\AiAssignment\Ai-Assignment\RAF-DB\test
+nc: 7
+names: ['surprise', 'fear', 'disgust', 'happy', 'sad', 'angry', 'neutral']
