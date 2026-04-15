@@ -1,7 +1,6 @@
 import tensorflow as tf
 import numpy as np
 import seaborn as sns
-import matplotlib.subplots as plt
 import matplotlib.pyplot as plt 
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.utils.class_weight import compute_class_weight
@@ -45,7 +44,7 @@ test_datagen = ImageDataGenerator(preprocessing_function=preprocess_input)
 
 # Ensure this path points to your downloaded Kaggle RAF-DB folders
 train_generator = train_datagen.flow_from_directory(
-    'DATASET/train', 
+    'dataset/DATASET/train', 
     target_size=(224, 224), 
     color_mode="rgb", 
     batch_size=16, 
@@ -53,7 +52,7 @@ train_generator = train_datagen.flow_from_directory(
 )
 
 test_generator = test_datagen.flow_from_directory(
-    'DATASET/test',  
+    'dataset/DATASET/test',  
     target_size=(224, 224), 
     color_mode="rgb", 
     batch_size=16, 
