@@ -13,26 +13,18 @@ from tensorflow.keras.layers import GlobalAveragePooling2D
 physical_devices = tf.config.list_physical_devices('GPU')
 if physical_devices:
     try:
-        # Tell TF to dynamically grow GPU memory usage
         tf.config.experimental.set_memory_growth(physical_devices[0], True)
         print("GPU Memory Growth Enabled!")
     except RuntimeError as e:
         print(e)
 
 print(f"GPUs detected: {len(physical_devices)}")
-print(f"GPUs detected: {len(tf.config.list_physical_devices('GPU'))}")
 
 # ==========================================
-# 1. LOAD IMAGES
+# 1. LOAD IMAGES (FIXED: NO DOUBLE AUGMENTATION)
 # ==========================================
-# Ensure this points to the ORIGINAL, clean dataset to get your 79% back!
-train_datagen = ImageDataGenerator(
-    rescale=1./255,
-    rotation_range=10,       
-    zoom_range=0.10,         
-    width_shift_range=0.15,
-    height_shift_range=0.15
-)
+# We ONLY rescale because your friend already augmented the images!
+train_datagen = ImageDataGenerator(rescale=1./255)
 test_datagen = ImageDataGenerator(rescale=1./255)
 
 # Connect generators 
@@ -71,7 +63,12 @@ model = Sequential([
 ])
 
 lr_reducer = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1)
-early_stopper = EarlyStopping(monitor='val_accuracy', patience=12, restore_best_weights=True)
+
+# Phase 1 Stopper: Very patient (12 epochs)
+early_stopper_phase1 = EarlyStopping(monitor='val_accuracy', patience=12, restore_best_weights=True)
+
+# Phase 2 Stopper: Very strict (5 epochs)
+strict_early_stopper = EarlyStopping(monitor='val_accuracy', patience=5, restore_best_weights=True)
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
@@ -83,7 +80,7 @@ history = model.fit(
     train_generator,
     epochs=30,
     validation_data=test_generator,
-    callbacks=[lr_reducer, early_stopper],
+    callbacks=[lr_reducer, early_stopper_phase1],
     workers=4,          
     max_queue_size=20   
 )
@@ -92,15 +89,16 @@ model.save('cnn_emotion_model_phase1.h5')
 print("Phase 1 CNN Model saved successfully!")
 
 # ==========================================
-# 5. PHASE 2: FINE-TUNING (100% UNFREEZE)
+# 5. PHASE 2: FINE-TUNING (FIXED: SAFER LEARNING RATE)
 # ==========================================
 print("\nStarting Phase 2: Fine-Tuning the Google Brain...")
 
 base_model.trainable = True
 
 from tensorflow.keras.optimizers import Adam
+# LOWERED LEARNING RATE to prevent the brain from crashing like it did in the graph
 model.compile(
-    optimizer=Adam(learning_rate=0.00001), 
+    optimizer=Adam(learning_rate=0.000005), 
     loss='categorical_crossentropy', 
     metrics=['accuracy']
 )
@@ -109,7 +107,7 @@ history_fine = model.fit(
     train_generator,
     epochs=40, 
     validation_data=test_generator,
-    callbacks=[early_stopper],
+    callbacks=[strict_early_stopper], 
     workers=4,          
     max_queue_size=20   
 )
@@ -152,8 +150,7 @@ axes[1].grid(True)
 # ---> AUTO SAVE GRAPHS <---
 fig.savefig('training_history_graphs.png', bbox_inches='tight')
 print("✅ Saved: training_history_graphs.png")
-plt.close(fig) # Closes the figure to free up memory
-
+plt.close(fig) 
 
 # B. Generate Predictions
 print("\nGenerating predictions for classification report...")
