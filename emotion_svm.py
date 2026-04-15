@@ -37,14 +37,14 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────
 DATA_DIR  = r'RAF-DB\train'       # relative to this script's folder
 MODEL_DIR = 'models'
-IMG_SIZE  = (64, 64)
+IMG_SIZE  = (100, 100)
 
 # BUG FIX: 'suprise' → 'surprise' (typo in original)
 EMOTIONS  = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 
 # Limit images per class to prevent RAM crash on large datasets
 # RAF-DB has ~3k-12k per class — 1500 is a safe balanced cap
-IMAGES_PER_CLASS = 1500
+IMAGES_PER_CLASS = 4772
 
 # SVM params — tuned for RAF-DB
 SVM_C     = 10
