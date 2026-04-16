@@ -3,14 +3,11 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt 
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.utils.class_weight import compute_class_weight
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization, GlobalAveragePooling2D
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.callbacks import ReduceLROnPlateau, EarlyStopping
 from tensorflow.keras.applications import MobileNetV2
-
-# ---> FIX 1: Import the exact mathematical preprocessor for MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 # ==========================================
@@ -29,20 +26,19 @@ print(f"GPUs detected: {len(physical_devices)}")
 # ==========================================
 # 1. LOAD & PREPROCESS RAW IMAGES
 # ==========================================
-print("\nSetting up Data Augmentation for raw images...")
+print("\nSetting up Optimized Data Augmentation...")
 
-# ---> FIX 1 APPLIED: Removed rescale, added proper MobileNetV2 preprocessing
+# ---> TIGHTENED AUGMENTATION: Less shifting so the face stays in the frame
 train_datagen = ImageDataGenerator(
     preprocessing_function=preprocess_input, 
-    rotation_range=15,       
-    zoom_range=0.15,         
-    width_shift_range=0.15,
-    height_shift_range=0.15,
+    rotation_range=10,       
+    zoom_range=0.10,         
+    width_shift_range=0.05,  # Reduced from 0.15
+    height_shift_range=0.05, # Reduced from 0.15
     horizontal_flip=True 
 )
 test_datagen = ImageDataGenerator(preprocessing_function=preprocess_input)
 
-# Ensure this path points to your downloaded Kaggle RAF-DB folders
 train_generator = train_datagen.flow_from_directory(
     'dataset/DATASET/train', 
     target_size=(224, 224), 
@@ -61,18 +57,7 @@ test_generator = test_datagen.flow_from_directory(
 )
 
 # ==========================================
-# 2. CALCULATE CLASS WEIGHTS
-# ==========================================
-print("\nCalculating Class Weights to balance the raw Kaggle dataset...")
-class_weights = compute_class_weight(
-    class_weight='balanced',
-    classes=np.unique(train_generator.classes),
-    y=train_generator.classes
-)
-weight_dict = dict(enumerate(class_weights))
-
-# ==========================================
-# 3. ARCHITECTURE (MobileNetV2)
+# 2. ARCHITECTURE (MobileNetV2)
 # ==========================================
 print("\nDownloading Google's MobileNetV2 brain...")
 
@@ -95,15 +80,15 @@ strict_early_stopper = EarlyStopping(monitor='val_accuracy', patience=5, restore
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # ==========================================
-# 4. PHASE 1: WARM-UP TRAINING
+# 3. PHASE 1: WARM-UP TRAINING
 # ==========================================
 print("Starting Advanced CNN training on your local GPU (Phase 1)...")
+# ---> REMOVED CLASS WEIGHTS: Let the AI focus on maximizing global accuracy!
 history = model.fit(
     train_generator,
     epochs=30,
     validation_data=test_generator,
     callbacks=[lr_reducer, early_stopper_phase1],
-    class_weight=weight_dict, 
     workers=4,          
     max_queue_size=20   
 )
@@ -112,15 +97,13 @@ model.save('cnn_emotion_model_phase1.h5')
 print("Phase 1 CNN Model saved successfully!")
 
 # ==========================================
-# 5. PHASE 2: SAFE FINE-TUNING
+# 4. PHASE 2: SAFE FINE-TUNING
 # ==========================================
 print("\nStarting Phase 2: Safe Fine-Tuning...")
 
-# ---> FIX 2: Do not unfreeze the whole brain. Only unfreeze the top 54 layers.
 base_model.trainable = True
 fine_tune_at = 100 
 
-# Freeze all the layers before the `fine_tune_at` layer
 for layer in base_model.layers[:fine_tune_at]:
     layer.trainable = False
 
@@ -131,12 +114,12 @@ model.compile(
     metrics=['accuracy']
 )
 
+# ---> REMOVED CLASS WEIGHTS HERE TOO
 history_fine = model.fit(
     train_generator,
     epochs=40, 
     validation_data=test_generator,
     callbacks=[strict_early_stopper], 
-    class_weight=weight_dict, 
     workers=4,          
     max_queue_size=20   
 )
@@ -144,9 +127,8 @@ history_fine = model.fit(
 model.save('cnn_emotion_model_FINAL.h5')
 print("Phase 2 Complete. Ultimate Model Saved!")
 
-
 # ==========================================
-# 6. EVALUATION & AUTO-SAVE SECTION
+# 5. EVALUATION & AUTO-SAVE SECTION
 # ==========================================
 print("\nGenerating and saving final evaluation graphs...")
 
