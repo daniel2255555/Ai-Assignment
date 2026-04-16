@@ -28,13 +28,12 @@ print(f"GPUs detected: {len(physical_devices)}")
 # ==========================================
 print("\nSetting up Optimized Data Augmentation...")
 
-# ---> TIGHTENED AUGMENTATION: Less shifting so the face stays in the frame
 train_datagen = ImageDataGenerator(
     preprocessing_function=preprocess_input, 
     rotation_range=10,       
     zoom_range=0.10,         
-    width_shift_range=0.05,  # Reduced from 0.15
-    height_shift_range=0.05, # Reduced from 0.15
+    width_shift_range=0.05,  
+    height_shift_range=0.05, 
     horizontal_flip=True 
 )
 test_datagen = ImageDataGenerator(preprocessing_function=preprocess_input)
@@ -67,15 +66,17 @@ base_model.trainable = False
 model = Sequential([
     base_model,
     GlobalAveragePooling2D(), 
-    Dense(256, activation='relu'),
+    Dense(512, activation='relu'), # ---> UPGRADED to 512 neurons
     BatchNormalization(),
-    Dropout(0.5),
+    Dropout(0.3),                  # ---> REDUCED to 0.3 (Taking off the training wheels)
     Dense(7, activation='softmax') 
 ])
 
 lr_reducer = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1)
 early_stopper_phase1 = EarlyStopping(monitor='val_accuracy', patience=12, restore_best_weights=True)
-strict_early_stopper = EarlyStopping(monitor='val_accuracy', patience=5, restore_best_weights=True)
+
+# ---> INCREASED PATIENCE: Give Phase 2 a little more time to climb before stopping
+strict_early_stopper = EarlyStopping(monitor='val_accuracy', patience=8, restore_best_weights=True) 
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
@@ -83,7 +84,6 @@ model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accur
 # 3. PHASE 1: WARM-UP TRAINING
 # ==========================================
 print("Starting Advanced CNN training on your local GPU (Phase 1)...")
-# ---> REMOVED CLASS WEIGHTS: Let the AI focus on maximizing global accuracy!
 history = model.fit(
     train_generator,
     epochs=30,
@@ -97,12 +97,14 @@ model.save('cnn_emotion_model_phase1.h5')
 print("Phase 1 CNN Model saved successfully!")
 
 # ==========================================
-# 4. PHASE 2: SAFE FINE-TUNING
+# 4. PHASE 2: DEEP FINE-TUNING
 # ==========================================
-print("\nStarting Phase 2: Safe Fine-Tuning...")
+print("\nStarting Phase 2: Deep Fine-Tuning...")
 
 base_model.trainable = True
-fine_tune_at = 100 
+
+# ---> DEEPER UNFREEZE: Unlocking the middle of the brain (Layer 50 instead of 100)
+fine_tune_at = 50 
 
 for layer in base_model.layers[:fine_tune_at]:
     layer.trainable = False
@@ -114,7 +116,6 @@ model.compile(
     metrics=['accuracy']
 )
 
-# ---> REMOVED CLASS WEIGHTS HERE TOO
 history_fine = model.fit(
     train_generator,
     epochs=40, 
