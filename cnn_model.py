@@ -34,7 +34,8 @@ train_datagen = ImageDataGenerator(
     zoom_range=0.10,         
     width_shift_range=0.05,  
     height_shift_range=0.05, 
-    horizontal_flip=True 
+    horizontal_flip=True,
+    brightness_range=[0.8, 1.2] # ---> HACK 3: Teach AI to ignore lighting differences
 )
 test_datagen = ImageDataGenerator(preprocessing_function=preprocess_input)
 
@@ -66,16 +67,16 @@ base_model.trainable = False
 model = Sequential([
     base_model,
     GlobalAveragePooling2D(), 
-    Dense(512, activation='relu'), # ---> UPGRADED to 512 neurons
+    # ---> HACK 4: L2 Regularization forces all 512 neurons to work as a team
+    Dense(512, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001)), 
     BatchNormalization(),
-    Dropout(0.3),                  # ---> REDUCED to 0.3 (Taking off the training wheels)
+    Dropout(0.3),                  
     Dense(7, activation='softmax') 
 ])
 
-lr_reducer = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1)
+# Let it drop the learning rate faster if it gets stuck
+lr_reducer = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, verbose=1) 
 early_stopper_phase1 = EarlyStopping(monitor='val_accuracy', patience=12, restore_best_weights=True)
-
-# ---> INCREASED PATIENCE: Give Phase 2 a little more time to climb before stopping
 strict_early_stopper = EarlyStopping(monitor='val_accuracy', patience=8, restore_best_weights=True) 
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
@@ -101,13 +102,8 @@ print("Phase 1 CNN Model saved successfully!")
 # ==========================================
 print("\nStarting Phase 2: Deep Fine-Tuning...")
 
+# ---> HACK 2: 100% UNFREEZE. We unlock the entire Google Brain.
 base_model.trainable = True
-
-# ---> DEEPER UNFREEZE: Unlocking the middle of the brain (Layer 50 instead of 100)
-fine_tune_at = 50 
-
-for layer in base_model.layers[:fine_tune_at]:
-    layer.trainable = False
 
 from tensorflow.keras.optimizers import Adam
 model.compile(
@@ -120,7 +116,8 @@ history_fine = model.fit(
     train_generator,
     epochs=40, 
     validation_data=test_generator,
-    callbacks=[strict_early_stopper], 
+    # ---> HACK 1: Added lr_reducer to Phase 2 so it perfects its score!
+    callbacks=[strict_early_stopper, lr_reducer], 
     workers=4,          
     max_queue_size=20   
 )
