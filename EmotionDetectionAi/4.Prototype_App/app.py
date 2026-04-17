@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
+import mediapipe as mp
 import pandas as pd
 import time
 from pathlib import Path
@@ -25,6 +26,12 @@ st.markdown("""
         color: white;
         margin-bottom: 20px;
     }
+    .stAlert {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 15px;
+        border-radius: 5px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -38,23 +45,27 @@ st.markdown("""
 # --- LOAD MODELS ---
 @st.cache_resource
 def load_yolo_model():
-    # FIXED: Model is in 3.Models folder (one directory up from app.py)
+    # Go up one directory from app.py location, then into 3.Models folder
     model_path = Path(__file__).parent.parent / "3.Models" / "best_oversampled.pt"
     
     if not model_path.exists():
         st.error(f"❌ Model not found at: {model_path}")
+        st.info("💡 Looking for model at: C:\\Users\\clogg\\Desktop\\School Github Repos\\Ai-Assignment\\EmotionDetectionAi\\3.Models\\best_oversampled.pt")
         st.stop()
     
     return YOLO(str(model_path))
 
 @st.cache_resource
 def load_face_detector():
-    # Using OpenCV's Haar Cascade (no MediaPipe dependency)
-    cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-    return cv2.CascadeClassifier(cascade_path)
+    mp_face_mesh = mp.solutions.face_mesh
+    return mp_face_mesh.FaceMesh(
+        max_num_faces=5, 
+        min_detection_confidence=0.5, 
+        min_tracking_confidence=0.5
+    )
 
 model = load_yolo_model()
-face_cascade = load_face_detector()
+face_mesh = load_face_detector()
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -66,7 +77,7 @@ with st.sidebar:
     
     if drowsiness_alert:
         alert_duration = st.slider("Alert after (seconds):", 3, 15, 5)
-        enable_sound = st.checkbox("🔊 Enable Sound Alert", value=True)
+        enable_sound = st.checkbox("🔊 Enable Sound Alert", value=True)  # ADDED
         st.info("💡 Simulates driver monitoring system - alerts if 'Sad' or 'Neutral' detected for too long")
     
     st.markdown("---")
@@ -80,7 +91,7 @@ with st.sidebar:
 tab1, tab2 = st.tabs(["🎥 Live Demo", "📊 Research Results"])
 
 # ==========================================
-# TAB 1: LIVE DEMO
+# TAB 1: LIVE DEMO (ORIGINAL CODE)
 # ==========================================
 with tab1:
     st.markdown("## 🎬 Real-Time Emotion Detection")
@@ -106,80 +117,57 @@ with tab1:
         
         return predictions
     
-    def detect_faces_opencv(frame):
-        """
-        Detect faces using OpenCV Haar Cascade with strict parameters
-        to avoid false positives from reflections/background
-        """
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.equalizeHist(gray)
-        
-        faces = face_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.3,        # Less sensitive to minor variations
-            minNeighbors=7,         # Require more confirming detections
-            minSize=(80, 80),       # Ignore small artifacts
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-        
-        # Filter: Keep only faces >= 2% of frame area
-        if len(faces) > 0:
-            frame_area = frame.shape[0] * frame.shape[1]
-            min_area = frame_area * 0.02
-            
-            valid_faces = []
-            for (x, y, w, h) in faces:
-                if (w * h) >= min_area:
-                    valid_faces.append((x, y, w, h))
-            
-            # If multiple valid faces, keep only the largest
-            if len(valid_faces) > 1:
-                valid_faces = sorted(valid_faces, key=lambda f: f[2] * f[3], reverse=True)
-                valid_faces = valid_faces[:1]
-            
-            return np.array(valid_faces)
-        
-        return faces
-    
-    def process_faces(frame, model):
-        """Process detected faces and classify emotions"""
-        faces = detect_faces_opencv(frame)
+    def process_face_with_mesh(frame, results_mesh, model):
+        """Process faces using MediaPipe 3D Face Mesh"""
         faces_data = []
         
-        for (x, y, w, h) in faces:
-            # Add padding
-            pad = int(w * 0.2)
-            x1 = max(0, x - pad)
-            y1 = max(0, y - pad)
-            x2 = min(frame.shape[1], x + w + pad)
-            y2 = min(frame.shape[0], y + h + pad)
-            
-            # Crop face
-            face_roi = frame[y1:y2, x1:x2]
-            
-            if face_roi.size == 0:
-                continue
-            
-            # YOLO prediction
-            results = model(face_roi, verbose=False)
-            top3 = get_top3_predictions(results)
-            top_emotion, top_conf = top3[0]
-            
-            faces_data.append({
-                'bbox': (x1, y1, x2, y2),
-                'top_emotion': top_emotion,
-                'top_conf': top_conf,
-                'top3': top3
-            })
-            
-            # Draw bounding box
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (102, 126, 234), 2)
-            
-            # Label
-            label = f"{top_emotion.upper()} {top_conf:.1f}%"
-            cv2.rectangle(frame, (x1, y1-30), (x1 + len(label)*12, y1), (102, 126, 234), -1)
-            cv2.putText(frame, label, (x1+5, y1-8), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        if results_mesh.multi_face_landmarks:
+            h, w, _ = frame.shape
+            for face_landmarks in results_mesh.multi_face_landmarks:
+                
+                # Extract bounding box from 468 landmarks
+                x_coords = [landmark.x * w for landmark in face_landmarks.landmark]
+                y_coords = [landmark.y * h for landmark in face_landmarks.landmark]
+                
+                x_min, x_max = int(min(x_coords)), int(max(x_coords))
+                y_min, y_max = int(min(y_coords)), int(max(y_coords))
+                
+                box_w = x_max - x_min
+                box_h = y_max - y_min
+                
+                # Add padding
+                pad_x, pad_y = int(box_w * 0.15), int(box_h * 0.15)
+                x = max(0, x_min - pad_x)
+                y = max(0, y_min - pad_y)
+                x_end = min(w, x_max + pad_x)
+                y_end = min(h, y_max + pad_y)
+                
+                # Crop face
+                face_roi = frame[y:y_end, x:x_end]
+                
+                if face_roi.size == 0:
+                    continue
+                
+                # YOLO prediction
+                results = model(face_roi, verbose=False)
+                top3 = get_top3_predictions(results)
+                top_emotion, top_conf = top3[0]
+                
+                faces_data.append({
+                    'bbox': (x, y, x_end, y_end),
+                    'top_emotion': top_emotion,
+                    'top_conf': top_conf,
+                    'top3': top3
+                })
+                
+                # Draw bounding box
+                cv2.rectangle(frame, (x, y), (x_end, y_end), (102, 126, 234), 2)
+                
+                # Label
+                label = f"{top_emotion.upper()} {top_conf:.1f}%"
+                cv2.rectangle(frame, (x, y-30), (x + len(label)*12, y), (102, 126, 234), -1)
+                cv2.putText(frame, label, (x+5, y-8), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
         return frame, faces_data
     
@@ -197,7 +185,10 @@ with tab1:
             frame = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
             
             with st.spinner('🔍 Analyzing emotions...'):
-                annotated_frame, faces_data = process_faces(frame, model)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mesh_results = face_mesh.process(frame_rgb)
+                
+                annotated_frame, faces_data = process_face_with_mesh(frame, mesh_results, model)
                 rgb_final = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                 
                 if not faces_data:
@@ -228,7 +219,7 @@ with tab1:
                             st.markdown("---")
     
     # ==========================================
-    # MODE 2: LIVE WEBCAM
+    # MODE 2: LIVE WEBCAM (ORIGINAL + BEEP SOUND ADDED)
     # ==========================================
     elif input_mode == "🎥 Live Webcam":
         
@@ -246,7 +237,7 @@ with tab1:
         
         # Drowsiness detection state
         drowsy_start_time = None
-        alert_active = False
+        alert_playing = False
         
         if run_webcam:
             cap = cv2.VideoCapture(0)
@@ -258,7 +249,10 @@ with tab1:
                     break
                 
                 # Process frame
-                annotated_frame, faces_data = process_faces(frame, model)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mesh_results = face_mesh.process(frame_rgb)
+                
+                annotated_frame, faces_data = process_face_with_mesh(frame, mesh_results, model)
                 
                 # Drowsiness detection logic
                 if drowsiness_alert and faces_data:
@@ -282,23 +276,24 @@ with tab1:
                                 st.warning(f"⚠️ Drowsiness detected: Alert in {remaining}s...")
                         else:
                             # ALERT!
-                            if not alert_active:
-                                with ALERT_PLACEHOLDER:
-                                    st.error("🚨 **DRIVER ALERT:** Drowsiness detected! Take a break. Pull over safely.")
-                                    st.balloons()
+                            with ALERT_PLACEHOLDER:
+                                st.error("🚨 DRIVER ALERT: Take a break! Pull over safely.")
+                                
+                                if not alert_playing:
+                                    st.balloons()  # Visual alert
                                     
-                                    # 🔊 PLAY BROWSER SOUND ALERT
+                                    # 🔊 PLAY BROWSER SOUND ALERT (ADDED)
                                     if enable_sound:
                                         st.markdown("""
                                             <audio autoplay>
                                                 <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
                                             </audio>
                                         """, unsafe_allow_html=True)
-                                
-                                alert_active = True
+                                    
+                                    alert_playing = True
                     else:
                         drowsy_start_time = None
-                        alert_active = False
+                        alert_playing = False
                         ALERT_PLACEHOLDER.empty()
                 
                 # Display frame
@@ -308,7 +303,7 @@ with tab1:
             cap.release()
 
 # ==========================================
-# TAB 2: RESEARCH RESULTS (UPDATED)
+# TAB 2: RESEARCH RESULTS (NEW - UPDATED)
 # ==========================================
 with tab2:
     st.markdown("## 📊 Comparative Model Performance")
@@ -367,10 +362,11 @@ with tab2:
     
     # CNN Analysis
     st.warning("""
-    **❌ CNN Underperformance Analysis (77% accuracy):**
-    - Transfer learning from ImageNet → RAF-DB showed domain shift
-    - Fine-tuning with only 3,068 trainable parameters insufficient
-    - Validates need for domain-specific end-to-end training (YOLO approach)
+    **❌ CNN Underperformance (77% accuracy):**
+    • Transfer learning from ImageNet → RAF-DB created domain gap
+    • Only 3,068 trainable parameters (base layers frozen)
+    • Pre-trained features optimized for objects, not facial emotions
+    • Validates YOLO's end-to-end training approach (88% accuracy)
     """)
     
     st.markdown("---")
@@ -477,7 +473,7 @@ with tab2:
     This system demonstrates practical deployment for driver drowsiness detection:
     
     **Pipeline:**
-    1. **Face Detection:** OpenCV Haar Cascade (~5ms)
+    1. **Face Detection:** MediaPipe 3D Face Mesh (468 landmarks)
     2. **Emotion Classification:** YOLO real-time inference (~7ms per face)
     3. **Alert System:** Triggers if "tired" emotions detected for >5 seconds
     4. **Audio + Visual Alerts:** Browser-based sound + visual notification
