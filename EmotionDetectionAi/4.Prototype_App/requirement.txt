@@ -1,5 +1,0 @@
-ultralytics
-streamlit
-opencv-python
-pandas
-tensorflow
