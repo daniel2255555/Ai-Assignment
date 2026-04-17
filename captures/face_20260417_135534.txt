@@ -1,0 +1,11 @@
+Label: fear
+Confidence: 84.7%
+
+Raw probabilities:
+  angry    : 0.0006
+  disgust  : 0.0046
+  fear     : 0.9909
+  happy    : 0.0002
+  neutral  : 0.0005
+  sad      : 0.0023
+  surprise : 0.0009
