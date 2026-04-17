@@ -1,8 +1,8 @@
 task: classify
 mode: train
 model: yolov8m-cls.pt
-data: data.yaml
-epochs: 30
+data: C:\Users\User\Desktop\AiAssignment\Ai-Assignment\RAF-DB
+epochs: 50
 time: null
 patience: 100
 batch: 64
